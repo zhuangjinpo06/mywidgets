@@ -235,7 +235,9 @@ class SplitButton(QFrame):
         if self._menu is None:
             self.menuRequested.emit()
             return
-        self._menu.popup(self.mapToGlobal(self.rect().bottomLeft()))
+        self._menu.popup(
+            self.menu_button.mapToGlobal(self.menu_button.rect().bottomLeft())
+        )
 
 
 class PrimarySplitButton(SplitButton):

@@ -67,7 +67,7 @@ class SideNavigation(QWidget):
     def __init__(self, brand: str = "API Studio", parent=None):
         super().__init__(parent)
         self.setObjectName("SideNavigation")
-        self._expanded_width = 220
+        self._expanded_width = 192
         self._compact = False
         self.setFixedWidth(self._expanded_width)
         self._items: list[NavItem] = []

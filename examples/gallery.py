@@ -387,7 +387,10 @@ class FeedbackPage(GalleryPage):
         flyout_button.clicked.connect(lambda: Flyout.show_at(flyout_button, "更多操作", "弹层会自动避开屏幕边缘。"))
         tip_button = bar.add_action("TeachingTip", "warning")
         tip_button.clicked.connect(lambda: TeachingTip.show_at(tip_button, "新功能", "这里可以解释重点入口。"))
-        bar.add_action("菜单", "menu", self.show_menu)
+        menu_button = bar.add_action("菜单", "menu")
+        menu_button.clicked.connect(
+            lambda checked=False, anchor=menu_button: self.show_menu(anchor)
+        )
         bar.add_action("状态", "time", self.show_state_tooltip)
         bar.add_action("颜色", "palette", self.show_color_dialog)
         bar.add_action("文件夹", "folder", self.show_folder_dialog)
@@ -396,8 +399,8 @@ class FeedbackPage(GalleryPage):
         self.root.addWidget(EmptyState("暂无更多消息", "所有弹层都可以在亮色与暗色主题下使用。"))
         self.finish()
 
-    def show_menu(self):
-        self.checkable_menu.popup(self.mapToGlobal(self.rect().center()))
+    def show_menu(self, anchor):
+        self.checkable_menu.popup(anchor.mapToGlobal(anchor.rect().bottomLeft()))
 
     def show_dialog(self):
         MessageBox("确认操作", "这是一个使用 mywidgets 实现的现代对话框。", self.window()).exec()

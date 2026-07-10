@@ -17,13 +17,21 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton, QWidget
 
 import mywidgets
-from examples.gallery import GalleryWindow
+from examples.gallery import FeedbackPage, GalleryWindow
 from mywidgets.core import create_existing_directory_dialog
 from mywidgets.resource import ICON_ALIASES, WINDOW_ICON_ALIASES
 from tests._qt import get_app
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class _RecordingMenu:
+    def __init__(self):
+        self.positions = []
+
+    def popup(self, position, *args):
+        self.positions.append(QPoint(position))
 
 
 class PackageTests(unittest.TestCase):
@@ -134,6 +142,50 @@ class PackageTests(unittest.TestCase):
         for widget in widgets:
             widget.deleteLater()
 
+    def test_menu_popups_anchor_to_clicked_controls(self):
+        host = QWidget()
+        host.resize(360, 180)
+        dropdown_menu = _RecordingMenu()
+        split_menu = _RecordingMenu()
+        dropdown = mywidgets.DropDownButton("Menu", "menu", dropdown_menu, host)
+        split = mywidgets.SplitButton("Send", "send", split_menu, host)
+        dropdown.setGeometry(20, 20, 140, 36)
+        split.setGeometry(20, 80, 180, 36)
+        host.show()
+        dropdown.show()
+        split.show()
+        self.app.processEvents()
+
+        QTest.mouseClick(dropdown, Qt.LeftButton)
+        self.assertEqual(
+            [dropdown.mapToGlobal(dropdown.rect().bottomLeft())],
+            dropdown_menu.positions,
+        )
+
+        QTest.mouseClick(split.menu_button, Qt.LeftButton)
+        expected = split.menu_button.mapToGlobal(split.menu_button.rect().bottomLeft())
+        self.assertEqual([expected], split_menu.positions)
+        self.assertNotEqual(split.mapToGlobal(split.rect().bottomLeft()), expected)
+        host.close()
+
+    def test_gallery_menu_anchors_to_menu_button(self):
+        page = FeedbackPage()
+        page.resize(720, 540)
+        page.show()
+        self.app.processEvents()
+        menu_button = next(
+            button for button in page.findChildren(QPushButton) if button.text() == "菜单"
+        )
+        recording_menu = _RecordingMenu()
+        page.checkable_menu = recording_menu
+
+        QTest.mouseClick(menu_button, Qt.LeftButton)
+
+        expected = menu_button.mapToGlobal(menu_button.rect().bottomLeft())
+        self.assertEqual([expected], recording_menu.positions)
+        self.assertNotEqual(page.mapToGlobal(page.rect().center()), expected)
+        page.close()
+
     def test_date_defaults_use_current_values(self):
         today = QDate.currentDate()
         now = QTime.currentTime()
@@ -150,6 +202,7 @@ class PackageTests(unittest.TestCase):
         window.resize(980, 640)
         window.show()
         self.app.processEvents()
+        self.assertEqual(192, window.navigation.width())
         self.assertEqual(window.stack.count(), 6)
         self.assertEqual(window.route_key(5), "settings")
         self.assertFalse(window.windowIcon().isNull())
@@ -159,6 +212,16 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(window.set_current("basics"))
         self.assertFalse(window.set_current("missing"))
         window.close()
+
+    def test_side_navigation_uses_narrow_expanded_width(self):
+        side = mywidgets.SideNavigation()
+        self.assertEqual(192, side.width())
+        self.assertEqual(192, side.minimumWidth())
+        self.assertEqual(192, side.maximumWidth())
+        side.set_compact(True)
+        self.assertEqual(72, side.width())
+        side.set_compact(False)
+        self.assertEqual(192, side.width())
 
     def test_navigation_mutations_preserve_and_report_selection(self):
         top = mywidgets.TopNavigation()
