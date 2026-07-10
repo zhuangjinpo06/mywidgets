@@ -148,9 +148,19 @@ class Flyout(QFrame):
         popup_position = enum_value(position, PopupPosition, PopupPosition.BOTTOM)
         anchor_top_left = anchor.mapToGlobal(QPoint(0, 0))
         gap = 8
-        if popup_position == PopupPosition.TOP:
+        if popup_position in (
+            PopupPosition.TOP_LEFT,
+            PopupPosition.TOP,
+            PopupPosition.TOP_RIGHT,
+        ):
+            if popup_position == PopupPosition.TOP_LEFT:
+                x = anchor_top_left.x()
+            elif popup_position == PopupPosition.TOP_RIGHT:
+                x = anchor_top_left.x() + anchor.width() - flyout.width()
+            else:
+                x = anchor_top_left.x() + (anchor.width() - flyout.width()) // 2
             pos = QPoint(
-                anchor_top_left.x() + (anchor.width() - flyout.width()) // 2,
+                x,
                 anchor_top_left.y() - flyout.height() - gap,
             )
         elif popup_position == PopupPosition.LEFT:
@@ -163,10 +173,25 @@ class Flyout(QFrame):
                 anchor_top_left.x() + anchor.width() + gap,
                 anchor_top_left.y() + (anchor.height() - flyout.height()) // 2,
             )
+        elif popup_position in (
+            PopupPosition.BOTTOM_LEFT,
+            PopupPosition.BOTTOM,
+            PopupPosition.BOTTOM_RIGHT,
+        ):
+            if popup_position == PopupPosition.BOTTOM_LEFT:
+                x = anchor_top_left.x()
+            elif popup_position == PopupPosition.BOTTOM_RIGHT:
+                x = anchor_top_left.x() + anchor.width() - flyout.width()
+            else:
+                x = anchor_top_left.x() + (anchor.width() - flyout.width()) // 2
+            pos = QPoint(
+                x,
+                anchor_top_left.y() + anchor.height() + gap,
+            )
         else:
             pos = QPoint(
                 anchor_top_left.x() + (anchor.width() - flyout.width()) // 2,
-                anchor_top_left.y() + anchor.height() + gap,
+                anchor_top_left.y() + (anchor.height() - flyout.height()) // 2,
             )
         screen = anchor.screen() or QApplication.screenAt(anchor_top_left)
         if screen is not None:
@@ -216,6 +241,9 @@ class InfoBanner(QFrame):
         self._icon_name = icon
         self.setObjectName("InfoBanner")
         self.setProperty("kind", self.kind.value)
+        self._close_timer = QTimer(self)
+        self._close_timer.setSingleShot(True)
+        self._close_timer.timeout.connect(self.close)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
@@ -236,7 +264,7 @@ class InfoBanner(QFrame):
         ThemeManager.instance().themeChanged.connect(self._refresh_icon)
         self._refresh_icon()
         if duration > 0:
-            QTimer.singleShot(duration, self.close)
+            self._close_timer.start(duration)
 
     def _refresh_icon(self, palette=None):
         role = {

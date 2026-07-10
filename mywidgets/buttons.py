@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSizePolicy,
-    QWidget,
 )
 
 from .core import IconResolver, IconSpec

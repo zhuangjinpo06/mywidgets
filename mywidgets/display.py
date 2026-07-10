@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QImage,
@@ -202,13 +202,14 @@ class ProgressRing(QProgressBar):
         rect = self.rect().adjusted(6, 6, -6, -6)
         progress_range = max(1, self.maximum() - self.minimum())
         progress = (self.value() - self.minimum()) / progress_range
-        span = -round(360 * 16 * max(0.0, min(1.0, progress)))
+        progress = max(0.0, min(1.0, progress))
+        span = -round(360 * 16 * progress)
         painter.setPen(QPen(QColor(palette.surface_alt), 6, Qt.SolidLine, Qt.RoundCap))
         painter.drawArc(rect, 0, 360 * 16)
         painter.setPen(QPen(QColor(palette.accent), 6, Qt.SolidLine, Qt.RoundCap))
         painter.drawArc(rect, 90 * 16, span)
         painter.setPen(QColor(palette.text))
-        painter.drawText(self.rect(), Qt.AlignCenter, f"{self.value()}%")
+        painter.drawText(self.rect(), Qt.AlignCenter, f"{round(progress * 100)}%")
 
 
 class IndeterminateProgressRing(QWidget):

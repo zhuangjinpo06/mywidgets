@@ -284,6 +284,7 @@ class ExpandSettingCard(SettingCard):
         self.body_layout.setContentsMargins(34, 4, 0, 0)
         self.body_layout.setSpacing(8)
         self._outer.addWidget(self.body)
+        self._expanded = None
         self.set_expanded(expanded)
 
     def add_widget(self, widget: QWidget):
@@ -292,12 +293,15 @@ class ExpandSettingCard(SettingCard):
 
     def set_expanded(self, expanded: bool):
         expanded = bool(expanded)
+        changed = self._expanded != expanded
+        self._expanded = expanded
         self.body.setVisible(expanded)
         self.expand_button.blockSignals(True)
         self.expand_button.setChecked(expanded)
         self.expand_button.set_icon("chevron_up" if expanded else "chevron_down")
         self.expand_button.blockSignals(False)
-        self.expandedChanged.emit(expanded)
+        if changed:
+            self.expandedChanged.emit(expanded)
 
 
 class FolderListSettingCard(ExpandSettingCard):

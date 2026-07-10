@@ -2,7 +2,7 @@
 
 `mywidgets` 是一个基于 PySide6 的 Fluent 风格桌面组件库，提供亮色/暗色/跟随系统主题、动态图标、导航、输入、数据展示、反馈弹层、设置卡片和日期时间控件。
 
-组件库不依赖 `qfluentwidgets`，公开组件统一从 `mywidgets` 根包导入。
+公开组件统一从 `mywidgets` 根包导入。
 
 ## 安装
 

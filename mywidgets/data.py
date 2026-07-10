@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QScrollArea,
-    QStackedWidget,
     QTableView,
     QTableWidget,
     QTabWidget,
@@ -104,11 +103,14 @@ class ModernTabs(QTabWidget):
         self.setMovable(movable)
 
     def _close_tab(self, index: int):
+        if not 0 <= index < self.count():
+            return False
         widget = self.widget(index)
         self.removeTab(index)
         if widget is not None:
             widget.deleteLater()
         self.tabClosed.emit(index)
+        return True
 
 
 class SegmentedControl(QFrame):
@@ -148,14 +150,26 @@ class SegmentedControl(QFrame):
     def remove_item(self, index: int):
         if not 0 <= index < len(self._buttons):
             return None
-        was_current = index == self.current_index()
+        previous_index = self.current_index()
+        current = self._group.checkedButton()
         button = self._buttons.pop(index)
+        was_current = button is current
         self._group.removeButton(button)
         self.layout.removeWidget(button)
         button.deleteLater()
         self._reindex()
-        if self._buttons and was_current:
-            self.set_current(min(index, len(self._buttons) - 1))
+        if not self._buttons:
+            if previous_index >= 0:
+                self.currentChanged.emit(-1)
+            return button
+
+        if was_current or current is None:
+            current_index = min(index, len(self._buttons) - 1)
+        else:
+            current_index = self._buttons.index(current)
+        self._buttons[current_index].setChecked(True)
+        if was_current or current_index != previous_index:
+            self.currentChanged.emit(current_index)
         return button
 
     def clear(self):
@@ -260,6 +274,9 @@ class CommandBar(QFrame):
         self._more_button.clicked.connect(self._show_overflow)
         self._more_button.hide()
         self.layout.addWidget(self._more_button)
+        self._overflow_timer = QTimer(self)
+        self._overflow_timer.setSingleShot(True)
+        self._overflow_timer.timeout.connect(self._update_overflow)
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def add_action(self, text: str, icon=None, callback=None, primary: bool = False):
@@ -268,7 +285,7 @@ class CommandBar(QFrame):
             button.clicked.connect(callback)
         self._items.append(_CommandItem(button, text, icon, callback))
         self.layout.insertWidget(max(0, self.layout.count() - 1), button)
-        QTimer.singleShot(0, self._update_overflow)
+        self._overflow_timer.start(0)
         return button
 
     def add_spacer(self):
@@ -314,6 +331,7 @@ class CommandBar(QFrame):
         self._more_button.setVisible(bool(hidden))
 
     def _show_overflow(self):
+        self._update_overflow()
         if not self._overflow_menu.isEmpty():
             self._overflow_menu.popup(
                 self._more_button.mapToGlobal(self._more_button.rect().bottomLeft())
@@ -363,9 +381,12 @@ class Pagination(QFrame):
         return self._current
 
     def set_page_count(self, count: int):
+        previous = self._current
         self._page_count = max(0, count)
         self._current = min(self._current, max(0, self._page_count - 1))
         self._refresh()
+        if self._current != previous:
+            self.currentChanged.emit(self._current)
 
     def add_item(self, text: str = ""):
         self.set_page_count(self._page_count + 1)
@@ -374,7 +395,17 @@ class Pagination(QFrame):
     def remove_item(self, index: int):
         if not 0 <= index < self._page_count:
             return False
-        self.set_page_count(self._page_count - 1)
+        previous = self._current
+        self._page_count -= 1
+        if self._page_count == 0:
+            self._current = 0
+        elif index < self._current:
+            self._current -= 1
+        else:
+            self._current = min(self._current, self._page_count - 1)
+        self._refresh()
+        if self._current != previous:
+            self.currentChanged.emit(self._current)
         return True
 
     def clear(self):
@@ -403,6 +434,8 @@ class CardGrid(QWidget):
         self._active_columns = self.columns
 
     def add_card(self, card: QWidget):
+        if card in self._cards:
+            return card
         self._cards.append(card)
         self._reflow()
         return card

@@ -20,7 +20,7 @@ python -m pip install mywidgets
 python -m pip install -r mywidgets/requirements.txt
 ```
 
-不要复制本仓库外部的 `qfluentwidgets/`。`mywidgets` 没有该运行时依赖，也不要混用不同版本的模块文件。
+使用源码复制方式时，应保持 `mywidgets/` 包内文件版本一致，不要混用不同版本的模块文件。
 
 ## 2. 应用初始化
 
@@ -163,7 +163,7 @@ warning_button = ToolButton(IconSpec("warning", "warning"), "警告")
 
 ### 项目有自己的资源目录
 
-业务资源路径应基于业务模块的 `__file__` 解析，不要依赖当前工作目录。`mywidgets` 自身不要求复制 Gallery 图片或 `qfluentwidgets` 资源。
+业务资源路径应基于业务模块的 `__file__` 解析，不要依赖当前工作目录。`mywidgets` 自身不要求复制 Gallery 图片。
 
 ### 更新 mywidgets
 

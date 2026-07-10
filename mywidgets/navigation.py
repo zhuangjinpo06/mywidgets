@@ -127,17 +127,31 @@ class SideNavigation(QWidget):
         item = next((candidate for candidate in self._items if candidate.index == index), None)
         if item is None:
             return None
+        current = next((candidate for candidate in self._items if candidate.isChecked()), None)
+        previous_index = current.index if current is not None else -1
+        was_current = item is current
         self._items.remove(item)
         item.setParent(None)
         item.deleteLater()
         for candidate in self._items:
             if candidate.index > index:
                 candidate.index -= 1
-        if self._items and not any(candidate.isChecked() for candidate in self._items):
-            self.set_current(min(index, len(self._items) - 1))
+        if not self._items:
+            if was_current:
+                self.currentChanged.emit(-1)
+            return item
+
+        if was_current or current is None:
+            current_index = min(index, len(self._items) - 1)
+        else:
+            current_index = current.index
+        self.set_current(current_index)
+        if was_current or current_index != previous_index:
+            self.currentChanged.emit(current_index)
         return item
 
     def clear(self):
+        had_current = any(item.isChecked() for item in self._items)
         for item in list(self._items):
             item.setParent(None)
             item.deleteLater()
@@ -146,6 +160,8 @@ class SideNavigation(QWidget):
             extra.setParent(None)
             extra.deleteLater()
         self._extras.clear()
+        if had_current:
+            self.currentChanged.emit(-1)
 
     def set_current(self, index: int):
         found = False
@@ -206,12 +222,27 @@ class TopNavigation(QWidget):
     def remove_item(self, index: int):
         if not 0 <= index < len(self._items):
             return None
+        current = next((item for item in self._items if item.isChecked()), None)
+        previous_index = current.index if current is not None else -1
         item = self._items.pop(index)
+        was_current = item is current
         item.deleteLater()
         for new_index, candidate in enumerate(self._items):
             candidate.index = new_index
-        if self._items:
-            self.set_current(min(index, len(self._items) - 1))
+        if not self._items:
+            if was_current:
+                self.currentChanged.emit(-1)
+            return item
+
+        if was_current:
+            current_index = min(index, len(self._items) - 1)
+        elif current is None:
+            current_index = min(index, len(self._items) - 1)
+        else:
+            current_index = current.index
+        self.set_current(current_index)
+        if was_current or current_index != previous_index:
+            self.currentChanged.emit(current_index)
         return item
 
     def clear(self):
@@ -299,12 +330,27 @@ class ModernWindow(QMainWindow):
             index = int(route_or_index)
         if not 0 <= index < self.stack.count():
             return None
+        previous_widget = self.stack.currentWidget()
+        previous_index = self.stack.currentIndex()
         widget = self.stack.widget(index)
         self.stack.removeWidget(widget)
         self._routes.pop(index)
-        self.navigation.remove_item(index)
+        signals_blocked = self.navigation.blockSignals(True)
+        try:
+            self.navigation.remove_item(index)
+        finally:
+            self.navigation.blockSignals(signals_blocked)
         if self.stack.count():
-            self.set_current(min(index, self.stack.count() - 1))
+            if previous_widget is widget:
+                current_index = min(index, self.stack.count() - 1)
+            else:
+                current_index = self.stack.indexOf(previous_widget)
+            self.stack.setCurrentIndex(current_index)
+            self.navigation.set_current(current_index)
+            if previous_widget is widget or current_index != previous_index:
+                self.currentChanged.emit(current_index)
+        elif previous_widget is widget:
+            self.currentChanged.emit(-1)
         return widget
 
     def route_key(self, index: int):

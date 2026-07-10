@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import weakref
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QTimer, Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QObject, QTimer, Qt, Signal
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
 from .core import install_window_icon
 from .display import IndeterminateProgressRing, StatusBadge
@@ -29,6 +30,9 @@ class Toast(QFrame):
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setMinimumWidth(280)
         self.setMaximumWidth(420)
+        self._close_timer = QTimer(self)
+        self._close_timer.setSingleShot(True)
+        self._close_timer.timeout.connect(self.close)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 12, 16, 12)
         layout.setSpacing(10)
@@ -77,6 +81,15 @@ class ToastManager:
         if parent not in cls._filters:
             event_filter = _ToastHostFilter(parent)
             parent.installEventFilter(event_filter)
+            parent_ref = weakref.ref(parent)
+
+            def drop_host(*args):
+                host = parent_ref()
+                if host is not None:
+                    cls._drop_host(host)
+
+            parent.destroyed.connect(drop_host)
+            event_filter._drop_host_callback = drop_host
             cls._filters[parent] = event_filter
         cls._active[parent].append((toast, popup_position))
         toast.adjustSize()
@@ -84,7 +97,7 @@ class ToastManager:
         toast.raise_()
         cls._position(parent)
         if duration > 0:
-            QTimer.singleShot(duration, toast.close)
+            toast._close_timer.start(duration)
         return toast
 
     @classmethod
@@ -148,7 +161,12 @@ class ToastManager:
                     toast.move(cls._x_for(parent, toast, position, margin), max(margin, y))
                     y -= 10
             else:
-                y = margin
+                if position in (PopupPosition.LEFT, PopupPosition.RIGHT, PopupPosition.CENTER):
+                    total_height = sum(toast.sizeHint().height() for toast in toasts)
+                    total_height += max(0, len(toasts) - 1) * 10
+                    y = max(margin, (parent.height() - total_height) // 2)
+                else:
+                    y = margin
                 for toast in toasts:
                     toast.adjustSize()
                     toast.move(cls._x_for(parent, toast, position, margin), y)
@@ -172,6 +190,9 @@ class StateTooltip(QFrame):
         self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
         install_window_icon(self, "toast")
         self.setAttribute(Qt.WA_DeleteOnClose)
+        self._close_timer = QTimer(self)
+        self._close_timer.setSingleShot(True)
+        self._close_timer.timeout.connect(self.close)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
@@ -188,13 +209,14 @@ class StateTooltip(QFrame):
         layout.addLayout(text_layout, 1)
 
     def set_state(self, success: bool, content: str = "", duration: int = 1200):
+        self._close_timer.stop()
         self.progress.hide()
         self.setProperty("kind", "success" if success else "error")
         self.content_label.setText(content)
         self.style().unpolish(self)
         self.style().polish(self)
         if duration > 0:
-            QTimer.singleShot(duration, self.close)
+            self._close_timer.start(duration)
 
     def closeEvent(self, event):
         self.closed.emit()

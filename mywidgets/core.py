@@ -74,7 +74,17 @@ def install_window_icon(widget: QWidget, icon: str | IconSpec | QIcon | None = N
         except RuntimeError:
             return
 
-    ThemeManager.instance().themeChanged.connect(refresh)
+    manager = ThemeManager.instance()
+    manager.themeChanged.connect(refresh)
+
+    def unbind(*args):
+        try:
+            manager.themeChanged.disconnect(refresh)
+        except (RuntimeError, TypeError):
+            pass
+
+    widget.destroyed.connect(unbind)
+    widget._mywidgets_window_icon_refresh = refresh
     widget._mywidgets_window_icon_bound = True
 
 

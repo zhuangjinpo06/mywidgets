@@ -11,9 +11,10 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QDate, QTime
-from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QCoreApplication, QDate, QEvent, QPoint, QRect, QTime, Qt
+from PySide6.QtGui import QAction, QColor, QPixmap
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QPushButton, QWidget
 
 import mywidgets
 from examples.gallery import GalleryWindow
@@ -158,6 +159,197 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(window.set_current("basics"))
         self.assertFalse(window.set_current("missing"))
         window.close()
+
+    def test_navigation_mutations_preserve_and_report_selection(self):
+        top = mywidgets.TopNavigation()
+        for title in ("A", "B", "C"):
+            top.add_item(title, "home")
+        top.set_current(0)
+        top_events = []
+        top.currentChanged.connect(top_events.append)
+        top.remove_item(2)
+        self.assertEqual(0, next(item.index for item in top._items if item.isChecked()))
+        self.assertEqual([], top_events)
+        top.remove_item(0)
+        self.assertEqual(0, next(item.index for item in top._items if item.isChecked()))
+        self.assertEqual([0], top_events)
+
+        side = mywidgets.SideNavigation()
+        for index, title in enumerate(("A", "B", "C")):
+            side.add_item(index, title, "home")
+        side.set_current(2)
+        side_events = []
+        side.currentChanged.connect(side_events.append)
+        side.remove_item(0)
+        self.assertEqual(1, next(item.index for item in side._items if item.isChecked()))
+        self.assertEqual([1], side_events)
+        side.clear()
+        self.assertEqual([1, -1], side_events)
+
+        segmented = mywidgets.SegmentedControl(["A", "B", "C"])
+        segmented.set_current(2)
+        segmented_events = []
+        segmented.currentChanged.connect(segmented_events.append)
+        segmented.remove_item(0)
+        self.assertEqual(1, segmented.current_index())
+        segmented.remove_item(1)
+        self.assertEqual(0, segmented.current_index())
+        self.assertEqual([1, 0], segmented_events)
+
+        window = mywidgets.ModernWindow()
+        for route in ("a", "b", "c"):
+            window.add_page(QWidget(), route, "home", route_key=route)
+        window.set_current("b")
+        window_events = []
+        window.currentChanged.connect(window_events.append)
+        window.remove_page("b")
+        self.assertEqual("c", window.route_key(window.stack.currentIndex()))
+        self.assertEqual([1], window_events)
+        window.remove_page("a")
+        self.assertEqual("c", window.route_key(window.stack.currentIndex()))
+        self.assertEqual([1, 0], window_events)
+
+    def test_input_icon_refresh_reuses_actions(self):
+        password = mywidgets.PasswordInput("secret")
+        search = mywidgets.SearchInput()
+        initial = (
+            len(password.findChildren(QAction)),
+            len(search.findChildren(QAction)),
+        )
+        for index in range(8):
+            mode = mywidgets.ThemeMode.DARK if index % 2 else mywidgets.ThemeMode.LIGHT
+            mywidgets.apply_theme(self.app, mode)
+            password._toggle_password()
+        self.assertEqual(
+            initial,
+            (
+                len(password.findChildren(QAction)),
+                len(search.findChildren(QAction)),
+            ),
+        )
+
+    def test_flyout_and_toast_positions(self):
+        host = QWidget()
+        host.resize(500, 400)
+        host.move(100, 100)
+        anchor = QPushButton("Anchor", host)
+        anchor.setGeometry(200, 170, 80, 30)
+        host.show()
+        anchor.show()
+        self.app.processEvents()
+        origin = anchor.mapToGlobal(QPoint())
+
+        expected = {
+            mywidgets.PopupPosition.TOP_LEFT: lambda popup: QPoint(
+                origin.x(), origin.y() - popup.height() - 8
+            ),
+            mywidgets.PopupPosition.TOP_RIGHT: lambda popup: QPoint(
+                origin.x() + anchor.width() - popup.width(),
+                origin.y() - popup.height() - 8,
+            ),
+            mywidgets.PopupPosition.BOTTOM_LEFT: lambda popup: QPoint(
+                origin.x(), origin.y() + anchor.height() + 8
+            ),
+            mywidgets.PopupPosition.BOTTOM_RIGHT: lambda popup: QPoint(
+                origin.x() + anchor.width() - popup.width(),
+                origin.y() + anchor.height() + 8,
+            ),
+            mywidgets.PopupPosition.CENTER: lambda popup: QPoint(
+                origin.x() + (anchor.width() - popup.width()) // 2,
+                origin.y() + (anchor.height() - popup.height()) // 2,
+            ),
+        }
+        for position, position_for in expected.items():
+            popup = mywidgets.Flyout.show_at(anchor, "Title", "Content", position)
+            self.app.processEvents()
+            self.assertEqual(position_for(popup), popup.pos(), position.value)
+            popup.close()
+
+        toast = mywidgets.ToastManager.show(
+            host,
+            "Center",
+            "Content",
+            duration=0,
+            position=mywidgets.PopupPosition.CENTER,
+        )
+        self.app.processEvents()
+        self.assertEqual((host.width() - toast.width()) // 2, toast.x())
+        self.assertEqual((host.height() - toast.height()) // 2, toast.y())
+        host.close()
+
+    def test_toast_manager_drops_destroyed_hosts(self):
+        host = QWidget()
+        mywidgets.ToastManager.info(host, "Title", "Content", duration=0)
+        self.assertIn(host, mywidgets.ToastManager._active)
+        self.assertIn(host, mywidgets.ToastManager._filters)
+        host.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        self.assertNotIn(host, mywidgets.ToastManager._active)
+        self.assertNotIn(host, mywidgets.ToastManager._filters)
+
+    def test_layout_state_and_pagination_boundaries(self):
+        host = QWidget()
+        flow = mywidgets.FlowLayout(host, spacing=10)
+        hidden = QPushButton("Hidden")
+        visible = QPushButton("Visible")
+        flow.addWidget(hidden)
+        flow.addWidget(visible)
+        hidden.hide()
+        flow.setGeometry(QRect(0, 0, 300, 100))
+        self.assertEqual(0, visible.geometry().x())
+
+        expand = mywidgets.ExpandSettingCard("Advanced")
+        expanded_events = []
+        expand.expandedChanged.connect(expanded_events.append)
+        expand.set_expanded(False)
+        expand.set_expanded(False)
+        expand.set_expanded(True)
+        expand.set_expanded(True)
+        self.assertEqual([True], expanded_events)
+
+        tabs = mywidgets.ModernTabs()
+        closed_events = []
+        tabs.tabClosed.connect(closed_events.append)
+        self.assertFalse(tabs._close_tab(99))
+        tabs.addTab(QWidget(), "A")
+        self.assertTrue(tabs._close_tab(0))
+        self.assertEqual([0], closed_events)
+
+        pagination = mywidgets.Pagination(5, 4)
+        page_events = []
+        pagination.currentChanged.connect(page_events.append)
+        pagination.set_page_count(2)
+        self.assertEqual(1, pagination.current_index())
+        pagination.remove_item(0)
+        self.assertEqual(0, pagination.current_index())
+        self.assertEqual([1, 0], page_events)
+
+        grid = mywidgets.CardGrid()
+        card = QWidget()
+        grid.add_card(card)
+        grid.add_card(card)
+        self.assertEqual([card], grid._cards)
+
+    def test_clickable_slider_only_jumps_for_left_button(self):
+        slider = mywidgets.ClickableSlider()
+        slider.setRange(0, 100)
+        slider.resize(200, 30)
+        slider.setValue(25)
+        slider.show()
+        self.app.processEvents()
+        QTest.mouseClick(slider, Qt.RightButton, Qt.NoModifier, QPoint(150, 15))
+        self.assertEqual(25, slider.value())
+        QTest.mouseClick(slider, Qt.LeftButton, Qt.NoModifier, QPoint(150, 15))
+        self.assertEqual(75, slider.value())
+
+    def test_state_tooltip_can_cancel_pending_close(self):
+        tooltip = mywidgets.StateTooltip("Working")
+        tooltip.show()
+        tooltip.set_state(True, "Done", duration=40)
+        tooltip.set_state(False, "Keep open", duration=0)
+        QTest.qWait(70)
+        self.assertTrue(tooltip.isVisible())
+        tooltip.close()
 
     def test_command_bar_overflow_keeps_button_connections(self):
         bar = mywidgets.CommandBar()
