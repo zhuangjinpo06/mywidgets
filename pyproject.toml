@@ -9,7 +9,7 @@ description = "Fluent-style PySide6 widgets for desktop applications."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "mywidgets maintainers" }
+    { name = "zhuangjinpo" }
 ]
 keywords = ["pyside6", "qt", "widgets", "fluent", "desktop-ui"]
 classifiers = [
@@ -29,6 +29,18 @@ dependencies = [
     "PySide6>=6.6",
     "QtAwesome>=1.3",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "twine>=5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/zhuangjinpo/mywidgets"
+Repository = "https://github.com/zhuangjinpo/mywidgets"
+Issues = "https://github.com/zhuangjinpo/mywidgets/issues"
+Documentation = "https://github.com/zhuangjinpo/mywidgets/blob/main/mywidgets/USAGE.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

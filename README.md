@@ -49,11 +49,33 @@ More examples are in `mywidgets/USAGE.md` and `app/gallery.py`.
 ## Development
 
 ```bash
+python -m pip install -e ".[dev]"
 python -m unittest discover -s tests -v
-python -m compileall -q mywidgets app tests
+python -m compileall -q mywidgets app tests examples
 python -m build
 python -m twine check dist/*
 ```
+
+## Publishing
+
+This repository is configured for PyPI Trusted Publishing through GitHub Actions.
+
+PyPI pending publisher values:
+
+- PyPI project name: `mywidgets`
+- GitHub owner: `zhuangjinpo`
+- GitHub repository: `mywidgets`
+- Workflow filename: `publish.yml`
+- Environment name: `pypi`
+
+After the PyPI pending publisher is created, publish a release by pushing a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The package name is currently unclaimed on PyPI if `https://pypi.org/pypi/mywidgets/json` returns `404`. If PyPI reports that the GitHub owner or repository is unknown, make sure `https://github.com/zhuangjinpo/mywidgets` is publicly accessible without signing in, then retry the pending publisher form.
 
 ## Package Contents
 
