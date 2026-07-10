@@ -48,7 +48,7 @@ class PackageTests(unittest.TestCase):
         self.assertGreaterEqual(len(modules), 18)
 
     def test_public_exports_and_version(self):
-        self.assertEqual("0.1.0", mywidgets.__version__)
+        self.assertEqual("0.1.1", mywidgets.__version__)
         self.assertEqual(len(mywidgets.__all__), len(set(mywidgets.__all__)))
         self.assertGreaterEqual(len(mywidgets.__all__), 120)
         for name in (
