@@ -282,11 +282,21 @@ class CommandBar(QFrame):
         if not self._items:
             self._more_button.hide()
             return
-        available = max(0, self.width() - 52)
+
+        spacing = max(0, self.layout.spacing())
+        total = sum(item.button.sizeHint().width() + spacing for item in self._items)
+        if total <= self.width():
+            for item in self._items:
+                item.button.show()
+            self._overflow_menu.clear()
+            self._more_button.hide()
+            return
+
+        available = max(0, self.width() - self._more_button.sizeHint().width() - spacing)
         used = 0
         hidden = []
         for item in self._items:
-            required = item.button.sizeHint().width() + self.layout.spacing()
+            required = item.button.sizeHint().width() + spacing
             visible = used + required <= available
             item.button.setVisible(visible)
             if visible:
@@ -296,8 +306,10 @@ class CommandBar(QFrame):
         self._overflow_menu.clear()
         for item in hidden:
             action = QAction(IconResolver.resolve(item.icon), item.text, self._overflow_menu)
-            if item.callback:
-                action.triggered.connect(item.callback)
+            action.setEnabled(item.button.isEnabled())
+            action.setCheckable(item.button.isCheckable())
+            action.setChecked(item.button.isChecked())
+            action.triggered.connect(item.button.click)
             self._overflow_menu.addAction(action)
         self._more_button.setVisible(bool(hidden))
 

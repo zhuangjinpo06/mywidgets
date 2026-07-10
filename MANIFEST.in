@@ -1,0 +1,6 @@
+include README.md
+include pyproject.toml
+recursive-include mywidgets *.py *.md *.txt
+prune examples
+prune tests
+global-exclude __pycache__ *.py[cod]

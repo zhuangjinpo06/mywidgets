@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QUrl, Qt, Signal
-from PySide6.QtGui import QDesktopServices, QMouseEvent
+from PySide6.QtGui import QDesktopServices, QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QLabel
 
 
@@ -54,13 +54,27 @@ class HyperlinkText(_TextLabel):
         super().__init__(text, "hyperlink", parent)
         self.url = url
         self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.setAccessibleName(text)
+
+    def activate(self):
+        if not self.url:
+            return False
+        self.activated.emit(self.url)
+        QDesktopServices.openUrl(QUrl(self.url))
+        return True
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton and self.url:
-            self.activated.emit(self.url)
-            QDesktopServices.openUrl(QUrl(self.url))
+        if event.button() == Qt.LeftButton:
+            self.activate()
         super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space) and self.activate():
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 __all__ = [

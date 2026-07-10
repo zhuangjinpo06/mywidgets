@@ -8,11 +8,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from PySide6.QtCore import QDate, QTime
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QWidget
 
 import mywidgets
-from app.gallery import GalleryWindow
+from examples.gallery import GalleryWindow
 from mywidgets.core import create_existing_directory_dialog
 from mywidgets.resource import ICON_ALIASES, WINDOW_ICON_ALIASES
 from tests._qt import get_app
@@ -28,6 +32,8 @@ class PackageTests(unittest.TestCase):
         mywidgets.apply_theme(cls.app, mywidgets.ThemeMode.LIGHT, "#3f8cff")
 
     def tearDown(self):
+        mywidgets.ToastManager.close_all()
+        self.app.processEvents()
         mywidgets.apply_theme(self.app, mywidgets.ThemeMode.LIGHT, "#3f8cff")
 
     def test_all_modules_import(self):
@@ -40,18 +46,32 @@ class PackageTests(unittest.TestCase):
         self.assertIn("mywidgets.resource", modules)
         self.assertGreaterEqual(len(modules), 18)
 
-    def test_public_exports_are_stable(self):
+    def test_public_exports_and_version(self):
+        self.assertEqual("0.1.0", mywidgets.__version__)
         self.assertEqual(len(mywidgets.__all__), len(set(mywidgets.__all__)))
         self.assertGreaterEqual(len(mywidgets.__all__), 120)
-        for name in ["ModernWindow", "DatePicker", "ToastManager", "FolderListDialog"]:
+        for name in (
+            "ModernWindow",
+            "DatePicker",
+            "ToastManager",
+            "FolderListDialog",
+            "ConfigStore",
+        ):
             self.assertTrue(hasattr(mywidgets, name), name)
+
+    def test_compatibility_facades_import(self):
+        from mywidgets.controls import PrimaryButton as ControlsButton
+        from mywidgets.widgets import PrimaryButton as WidgetsButton
+
+        self.assertIs(mywidgets.PrimaryButton, ControlsButton)
+        self.assertIs(mywidgets.PrimaryButton, WidgetsButton)
 
     def test_icon_resources_resolve(self):
         self.assertGreaterEqual(len(ICON_ALIASES), 90)
-        self.assertEqual(
-            [],
-            [name for name in ICON_ALIASES if mywidgets.IconResolver.resolve(name).isNull()],
-        )
+        unresolved = [
+            name for name in ICON_ALIASES if mywidgets.IconResolver.resolve(name).isNull()
+        ]
+        self.assertEqual([], unresolved)
         self.assertIn("folder", WINDOW_ICON_ALIASES)
 
     def test_windows_and_popups_have_icons(self):
@@ -118,7 +138,10 @@ class PackageTests(unittest.TestCase):
         now = QTime.currentTime()
         self.assertEqual(mywidgets.DatePicker().date(), today)
         self.assertEqual(mywidgets.CalendarPicker().date(), today)
-        self.assertEqual(mywidgets.MonthPicker().date(), QDate(today.year(), today.month(), 1))
+        self.assertEqual(
+            mywidgets.MonthPicker().date(),
+            QDate(today.year(), today.month(), 1),
+        )
         self.assertLess(abs(now.secsTo(mywidgets.TimePicker().time())), 3)
 
     def test_navigation_and_gallery_smoke(self):
@@ -131,7 +154,67 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(window.windowIcon().isNull())
         for index in range(window.stack.count()):
             self.assertTrue(window.set_current(index))
+            self.app.processEvents()
+        self.assertTrue(window.set_current("basics"))
+        self.assertFalse(window.set_current("missing"))
         window.close()
+
+    def test_command_bar_overflow_keeps_button_connections(self):
+        bar = mywidgets.CommandBar()
+        buttons = [bar.add_action(f"Action {index}", "info") for index in range(6)]
+        calls = []
+        buttons[-1].clicked.connect(lambda checked=False: calls.append("last"))
+        bar.resize(180, 40)
+        bar.show()
+        self.app.processEvents()
+        bar._update_overflow()
+        actions = bar._overflow_menu.actions()
+        self.assertGreater(len(actions), 0)
+        overflow_action = next(action for action in actions if action.text() == "Action 5")
+        overflow_action.trigger()
+        self.assertEqual(["last"], calls)
+
+        bar.resize(2000, 40)
+        self.app.processEvents()
+        bar._update_overflow()
+        self.assertTrue(all(button.isVisible() for button in buttons))
+        self.assertTrue(bar._overflow_menu.isEmpty())
+        bar.close()
+
+    def test_color_setting_card_tracks_current_color(self):
+        card = mywidgets.ColorSettingCard(
+            "Accent",
+            ["#111111", "#222222", "#333333"],
+            current="#222222",
+        )
+        self.assertEqual("#222222", card.current())
+        self.assertTrue(card.set_current("#333333"))
+        self.assertEqual("#333333", card.current())
+        self.assertFalse(card.set_current("#ffffff"))
+
+    def test_image_view_clears_invalid_source(self):
+        pixmap = QPixmap(24, 12)
+        pixmap.fill(QColor("#3f8cff"))
+        view = mywidgets.ImageView(pixmap)
+        view.resize(120, 80)
+        view.show()
+        self.app.processEvents()
+        self.assertFalse(view.pixmap().isNull())
+        view.set_source(PROJECT_ROOT / "does-not-exist.png")
+        self.assertTrue(view.pixmap().isNull())
+        view.close()
+
+    def test_config_store_handles_non_object_json_and_clear(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text('["valid", "json", "but", "not", "an", "object"]', encoding="utf-8")
+            store = mywidgets.ConfigStore(path)
+            self.assertEqual({}, store.data)
+            store.update({"主题": "dark", "timeout": 30})
+            self.assertEqual("dark", store.get("主题"))
+            self.assertTrue(store.clear())
+            self.assertEqual({}, store.data)
+            self.assertFalse(store.clear())
 
     def test_copied_package_imports_without_repository(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -158,8 +241,8 @@ class PackageTests(unittest.TestCase):
                 text=True,
                 timeout=30,
             )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout.strip(), "True")
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("True", result.stdout.strip())
 
 
 if __name__ == "__main__":

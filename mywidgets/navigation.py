@@ -200,6 +200,7 @@ class TopNavigation(QWidget):
         self.layout.addWidget(item)
         if len(self._items) == 1:
             item.setChecked(True)
+            item._refresh_icon()
         return item
 
     def remove_item(self, index: int):

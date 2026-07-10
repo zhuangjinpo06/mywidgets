@@ -174,7 +174,16 @@ class PushSettingCard(SettingCard):
 class ColorSettingCard(SettingCard):
     colorChanged = Signal(str)
 
-    def __init__(self, title: str, colors: list[str], content: str = "", icon="palette", parent=None):
+    def __init__(
+        self,
+        title: str,
+        colors: list[str],
+        content: str = "",
+        icon="palette",
+        parent=None,
+        *,
+        current: str | None = None,
+    ):
         super().__init__(title, content, icon, parent)
         self.colors = list(colors)
         self.buttons: list[QPushButton] = []
@@ -187,12 +196,16 @@ class ColorSettingCard(SettingCard):
             button.setAccessibleName(color)
             button.setToolTip(color)
             button.setFixedSize(28, 28)
-            button.clicked.connect(lambda checked=False, selected=color: self.colorChanged.emit(selected))
+            button.clicked.connect(
+                lambda checked=False, selected=color: self.colorChanged.emit(selected)
+                if checked
+                else None
+            )
             self.group.addButton(button)
             self.buttons.append(button)
             self.add_action_widget(button)
         if self.buttons:
-            self.buttons[0].setChecked(True)
+            self.set_current(current or self.colors[0])
         ThemeManager.instance().themeChanged.connect(self._refresh_swatches)
         self._refresh_swatches()
 
@@ -204,6 +217,18 @@ class ColorSettingCard(SettingCard):
                 f"QPushButton#ColorSwatch:hover {{ border-color: {theme.muted}; }}"
                 f"QPushButton#ColorSwatch:checked {{ border-color: {theme.text}; }}"
             )
+
+    def set_current(self, color: str):
+        if color not in self.colors:
+            return False
+        self.buttons[self.colors.index(color)].setChecked(True)
+        return True
+
+    def current(self):
+        checked = self.group.checkedButton()
+        if checked is None:
+            return ""
+        return self.colors[self.buttons.index(checked)]
 
 
 class OptionsSettingCard(SettingCard):

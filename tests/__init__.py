@@ -1,1 +1,1 @@
-
+"""Automated tests for mywidgets."""

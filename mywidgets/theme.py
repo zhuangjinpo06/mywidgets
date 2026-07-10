@@ -1166,12 +1166,14 @@ class ConfigStore:
     def load(self):
         if not self.path.exists():
             self.data = {}
-            return
+            return self.data
 
         try:
-            self.data = json.loads(self.path.read_text(encoding="utf-8"))
+            loaded = json.loads(self.path.read_text(encoding="utf-8"))
+            self.data = loaded if isinstance(loaded, dict) else {}
         except (OSError, json.JSONDecodeError):
             self.data = {}
+        return self.data
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -1180,6 +1182,7 @@ class ConfigStore:
             json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         temporary.replace(self.path)
+        return self.path
 
     def get(self, key: str, default=None):
         return self.data.get(key, default)
@@ -1200,3 +1203,10 @@ class ConfigStore:
         if existed and save:
             self.save()
         return existed
+
+    def clear(self, save: bool = True):
+        changed = bool(self.data)
+        self.data.clear()
+        if changed and save:
+            self.save()
+        return changed

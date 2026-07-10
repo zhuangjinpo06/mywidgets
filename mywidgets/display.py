@@ -200,7 +200,9 @@ class ProgressRing(QProgressBar):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect().adjusted(6, 6, -6, -6)
-        span = -round(360 * 16 * self.value() / max(1, self.maximum()))
+        progress_range = max(1, self.maximum() - self.minimum())
+        progress = (self.value() - self.minimum()) / progress_range
+        span = -round(360 * 16 * max(0.0, min(1.0, progress)))
         painter.setPen(QPen(QColor(palette.surface_alt), 6, Qt.SolidLine, Qt.RoundCap))
         painter.drawArc(rect, 0, 360 * 16)
         painter.setPen(QPen(QColor(palette.accent), 6, Qt.SolidLine, Qt.RoundCap))
@@ -263,12 +265,14 @@ class ImageView(QLabel):
         self._update_pixmap()
 
     def _update_pixmap(self):
-        if not self._source.isNull():
-            self.setPixmap(
-                self._source.scaled(
-                    self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
+        if self._source.isNull():
+            self.clear()
+            return
+        self.setPixmap(
+            self._source.scaled(
+                self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
+        )
 
 
 class Avatar(QWidget):
@@ -299,7 +303,9 @@ class Avatar(QWidget):
             pixmap = self._pixmap.scaled(
                 self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
             )
-            painter.drawPixmap(self.rect(), pixmap)
+            x = (self.width() - pixmap.width()) // 2
+            y = (self.height() - pixmap.height()) // 2
+            painter.drawPixmap(x, y, pixmap)
             return
         palette = ThemeManager.instance().palette
         painter.fillPath(path, theme_qcolor(palette.accent_soft))

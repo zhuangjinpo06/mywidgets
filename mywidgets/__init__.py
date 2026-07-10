@@ -28,6 +28,9 @@ from .theme import ThemeManager, ThemeMode, apply_theme
 from .typography import *
 
 
+__version__ = "0.1.0"
+
+
 __all__ = list(
     dict.fromkeys(
         [
@@ -50,6 +53,7 @@ __all__ = list(
             "ThemeMode",
             "ThemePalette",
             "apply_theme",
+            "__version__",
         ]
     )
 )
