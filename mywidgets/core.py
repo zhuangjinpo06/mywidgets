@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import weakref
 
@@ -18,7 +19,8 @@ class IconSpec:
 
 
 class IconResolver:
-    _cache: dict[tuple[str, str], QIcon] = {}
+    _cache_limit = 256
+    _cache: OrderedDict[tuple[str, str], QIcon] = OrderedDict()
 
     @staticmethod
     def resolve(name: str | IconSpec | QIcon | None, color_role: str = "text") -> QIcon:
@@ -38,12 +40,20 @@ class IconResolver:
         palette = ThemeManager.instance().palette
         color = getattr(palette, color_role, palette.text)
         key = (icon_name, color)
-        if key not in IconResolver._cache:
-            try:
-                IconResolver._cache[key] = qta.icon(icon_name, color=color)
-            except (Exception, SystemExit):
-                return QIcon()
-        return IconResolver._cache[key]
+        cached = IconResolver._cache.get(key)
+        if cached is not None:
+            IconResolver._cache.move_to_end(key)
+            return cached
+
+        try:
+            icon = qta.icon(icon_name, color=color)
+        except (Exception, SystemExit):
+            return QIcon()
+
+        IconResolver._cache[key] = icon
+        while len(IconResolver._cache) > IconResolver._cache_limit:
+            IconResolver._cache.popitem(last=False)
+        return icon
 
 
 def _window_icon_spec(icon: str | IconSpec | QIcon | None):
@@ -99,10 +109,13 @@ def create_existing_directory_dialog(parent: QWidget | None = None, title: str =
 
 def choose_existing_directory(parent: QWidget | None = None, title: str = "选择文件夹"):
     dialog = create_existing_directory_dialog(parent, title)
-    if dialog.exec() != QDialog.DialogCode.Accepted:
-        return ""
-    selected = dialog.selectedFiles()
-    return selected[0] if selected else ""
+    try:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        selected = dialog.selectedFiles()
+        return selected[0] if selected else ""
+    finally:
+        dialog.deleteLater()
 
 
 __all__ = [

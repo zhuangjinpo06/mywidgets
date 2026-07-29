@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QSlider,
     QSpinBox,
+    QStyle,
+    QStyleOptionSlider,
     QTextEdit,
 )
 
@@ -172,20 +174,35 @@ class RangeSlider(QSlider):
 
 class ClickableSlider(RangeSlider):
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            span = self.width() if self.orientation() == Qt.Horizontal else self.height()
-            position = (
-                event.position().x()
-                if self.orientation() == Qt.Horizontal
-                else event.position().y()
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        handle = self.style().subControlRect(
+            QStyle.CC_Slider,
+            option,
+            QStyle.SC_SliderHandle,
+            self,
+        )
+        if handle.contains(event.position().toPoint()):
+            super().mousePressEvent(event)
+            return
+
+        horizontal = self.orientation() == Qt.Horizontal
+        span = self.width() if horizontal else self.height()
+        position = event.position().x() if horizontal else event.position().y()
+        self.setValue(
+            QStyle.sliderValueFromPosition(
+                self.minimum(),
+                self.maximum(),
+                round(position),
+                max(1, span),
+                option.upsideDown,
             )
-            ratio = max(0.0, min(1.0, position / max(1, span)))
-            if self.orientation() == Qt.Vertical:
-                ratio = 1.0 - ratio
-            self.setValue(
-                round(self.minimum() + (self.maximum() - self.minimum()) * ratio)
-            )
-        super().mousePressEvent(event)
+        )
+        event.accept()
 
 
 __all__ = [

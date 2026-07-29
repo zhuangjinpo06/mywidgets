@@ -99,7 +99,13 @@ class SideNavigation(QWidget):
         icon: str,
         position: NavigationPosition | str = NavigationPosition.TOP,
     ) -> NavItem:
-        item = NavItem(index, title, icon, self)
+        """Append an item at the next contiguous navigation position."""
+        expected_index = len(self._items)
+        if index != expected_index:
+            raise ValueError(
+                f"SideNavigation index must be contiguous; expected {expected_index}, got {index}"
+            )
+        item = NavItem(expected_index, title, icon, self)
         item.set_compact(self._compact)
         item.selected.connect(self.set_current)
         item.selected.connect(self.currentChanged)
@@ -123,19 +129,17 @@ class SideNavigation(QWidget):
         self._target_layout(position).addWidget(separator)
         return separator
 
-    def remove_item(self, index: int):
-        item = next((candidate for candidate in self._items if candidate.index == index), None)
-        if item is None:
+    def remove_item(self, index: int) -> NavItem | None:
+        """Remove and return an item, transferring its ownership to the caller."""
+        if not 0 <= index < len(self._items):
             return None
         current = next((candidate for candidate in self._items if candidate.isChecked()), None)
         previous_index = current.index if current is not None else -1
+        item = self._items.pop(index)
         was_current = item is current
-        self._items.remove(item)
         item.setParent(None)
-        item.deleteLater()
-        for candidate in self._items:
-            if candidate.index > index:
-                candidate.index -= 1
+        for new_index, candidate in enumerate(self._items):
+            candidate.index = new_index
         if not self._items:
             if was_current:
                 self.currentChanged.emit(-1)
@@ -219,14 +223,16 @@ class TopNavigation(QWidget):
             item._refresh_icon()
         return item
 
-    def remove_item(self, index: int):
+    def remove_item(self, index: int) -> NavItem | None:
+        """Remove and return an item, transferring its ownership to the caller."""
         if not 0 <= index < len(self._items):
             return None
         current = next((item for item in self._items if item.isChecked()), None)
         previous_index = current.index if current is not None else -1
         item = self._items.pop(index)
         was_current = item is current
-        item.deleteLater()
+        self.layout.removeWidget(item)
+        item.setParent(None)
         for new_index, candidate in enumerate(self._items):
             candidate.index = new_index
         if not self._items:
@@ -247,7 +253,9 @@ class TopNavigation(QWidget):
 
     def clear(self):
         while self._items:
-            self.remove_item(len(self._items) - 1)
+            item = self.remove_item(len(self._items) - 1)
+            if item is not None:
+                item.deleteLater()
 
     def set_current(self, index: int):
         if not 0 <= index < len(self._items):
@@ -321,7 +329,8 @@ class ModernWindow(QMainWindow):
             self.currentChanged.emit(index)
         return True
 
-    def remove_page(self, route_or_index: str | int):
+    def remove_page(self, route_or_index: str | int) -> QWidget | None:
+        """Remove and return a page, transferring its ownership to the caller."""
         if isinstance(route_or_index, str):
             if route_or_index not in self._routes:
                 return None
@@ -334,10 +343,13 @@ class ModernWindow(QMainWindow):
         previous_index = self.stack.currentIndex()
         widget = self.stack.widget(index)
         self.stack.removeWidget(widget)
+        widget.setParent(None)
         self._routes.pop(index)
         signals_blocked = self.navigation.blockSignals(True)
         try:
-            self.navigation.remove_item(index)
+            navigation_item = self.navigation.remove_item(index)
+            if navigation_item is not None:
+                navigation_item.deleteLater()
         finally:
             self.navigation.blockSignals(signals_blocked)
         if self.stack.count():
@@ -363,6 +375,7 @@ class SplashScreen(QWidget):
         self.setObjectName("SplashScreen")
         self._icon_name = icon
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_DeleteOnClose)
         if parent is None:
             self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint)
         else:

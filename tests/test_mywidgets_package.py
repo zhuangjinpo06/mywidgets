@@ -7,18 +7,19 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QDate, QEvent, QPoint, QRect, QTime, Qt
-from PySide6.QtGui import QAction, QColor, QPixmap
+from PySide6.QtGui import QAction, QColor, QIcon, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6.QtWidgets import QDialog, QFileDialog, QPushButton, QWidget
 
 import mywidgets
 from examples.gallery import FeedbackPage, GalleryWindow
-from mywidgets.core import create_existing_directory_dialog
+from mywidgets.core import create_existing_directory_dialog, choose_existing_directory
 from mywidgets.resource import ICON_ALIASES, WINDOW_ICON_ALIASES
 from tests._qt import get_app
 
@@ -82,6 +83,56 @@ class PackageTests(unittest.TestCase):
         ]
         self.assertEqual([], unresolved)
         self.assertIn("folder", WINDOW_ICON_ALIASES)
+
+    def test_icon_cache_is_bounded_and_uses_lru_eviction(self):
+        resolver = mywidgets.IconResolver
+        original_cache = resolver._cache.copy()
+        resolver._cache.clear()
+        color = mywidgets.ThemeManager.instance().palette.text
+        try:
+            with patch("mywidgets.core.qta.icon", return_value=QIcon()):
+                for index in range(resolver._cache_limit):
+                    resolver.resolve(f"test.icon.{index}")
+                resolver.resolve("test.icon.0")
+                resolver.resolve("test.icon.extra")
+
+            self.assertEqual(resolver._cache_limit, len(resolver._cache))
+            self.assertIn(("test.icon.0", color), resolver._cache)
+            self.assertNotIn(("test.icon.1", color), resolver._cache)
+        finally:
+            resolver._cache.clear()
+            resolver._cache.update(original_cache)
+
+    def test_transient_dialogs_and_splash_are_deleted(self):
+        parent = QWidget()
+        with patch.object(
+            QFileDialog,
+            "exec",
+            return_value=QDialog.DialogCode.Rejected,
+        ):
+            for _ in range(3):
+                self.assertEqual("", choose_existing_directory(parent))
+
+        with (
+            patch.object(
+                QFileDialog,
+                "exec",
+                return_value=QDialog.DialogCode.Accepted,
+            ),
+            patch.object(
+                QFileDialog,
+                "selectedFiles",
+                return_value=["C:/workspace"],
+            ),
+        ):
+            self.assertEqual("C:/workspace", choose_existing_directory(parent))
+
+        splash = mywidgets.SplashScreen(parent=parent)
+        splash.show()
+        splash.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        self.assertEqual([], parent.findChildren(QFileDialog))
+        self.assertEqual([], parent.findChildren(mywidgets.SplashScreen))
 
     def test_windows_and_popups_have_icons(self):
         widgets = [
@@ -224,26 +275,40 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(192, side.width())
 
     def test_navigation_mutations_preserve_and_report_selection(self):
+        detached_widgets = []
         top = mywidgets.TopNavigation()
         for title in ("A", "B", "C"):
             top.add_item(title, "home")
         top.set_current(0)
         top_events = []
         top.currentChanged.connect(top_events.append)
-        top.remove_item(2)
+        removed_top = top.remove_item(2)
+        detached_widgets.append(removed_top)
+        self.assertIsNone(removed_top.parent())
+        self.assertEqual("C", removed_top.title)
         self.assertEqual(0, next(item.index for item in top._items if item.isChecked()))
         self.assertEqual([], top_events)
-        top.remove_item(0)
+        removed_top = top.remove_item(0)
+        detached_widgets.append(removed_top)
+        self.assertIsNone(removed_top.parent())
+        self.assertEqual("A", removed_top.title)
         self.assertEqual(0, next(item.index for item in top._items if item.isChecked()))
         self.assertEqual([0], top_events)
 
         side = mywidgets.SideNavigation()
+        with self.assertRaisesRegex(ValueError, "expected 0"):
+            side.add_item(10, "Invalid", "home")
         for index, title in enumerate(("A", "B", "C")):
             side.add_item(index, title, "home")
         side.set_current(2)
         side_events = []
         side.currentChanged.connect(side_events.append)
-        side.remove_item(0)
+        removed_side = side.remove_item(0)
+        detached_widgets.append(removed_side)
+        self.assertIsNone(removed_side.parent())
+        self.assertEqual("A", removed_side.title)
+        self.assertEqual([0, 1], [item.index for item in side._items])
+        self.assertEqual(2, side.add_item(2, "D", "home").index)
         self.assertEqual(1, next(item.index for item in side._items if item.isChecked()))
         self.assertEqual([1], side_events)
         side.clear()
@@ -253,7 +318,10 @@ class PackageTests(unittest.TestCase):
         segmented.set_current(2)
         segmented_events = []
         segmented.currentChanged.connect(segmented_events.append)
-        segmented.remove_item(0)
+        removed_segment = segmented.remove_item(0)
+        detached_widgets.append(removed_segment)
+        self.assertIsNone(removed_segment.parent())
+        self.assertEqual("A", removed_segment.text())
         self.assertEqual(1, segmented.current_index())
         segmented.remove_item(1)
         self.assertEqual(0, segmented.current_index())
@@ -265,12 +333,23 @@ class PackageTests(unittest.TestCase):
         window.set_current("b")
         window_events = []
         window.currentChanged.connect(window_events.append)
-        window.remove_page("b")
+        removed_page = window.remove_page("b")
+        detached_widgets.append(removed_page)
+        self.assertIsNone(removed_page.parent())
         self.assertEqual("c", window.route_key(window.stack.currentIndex()))
         self.assertEqual([1], window_events)
-        window.remove_page("a")
+        removed_page = window.remove_page("a")
+        detached_widgets.append(removed_page)
+        self.assertIsNone(removed_page.parent())
         self.assertEqual("c", window.route_key(window.stack.currentIndex()))
         self.assertEqual([1, 0], window_events)
+
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        for widget in detached_widgets:
+            self.assertIsNone(widget.parent())
+            self.assertIsInstance(widget.isEnabled(), bool)
+            widget.deleteLater()
 
     def test_input_icon_refresh_reuses_actions(self):
         password = mywidgets.PasswordInput("secret")
@@ -387,11 +466,23 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(0, pagination.current_index())
         self.assertEqual([1, 0], page_events)
 
+        pagination = mywidgets.Pagination(3, 1)
+        page_events = []
+        pagination.currentChanged.connect(page_events.append)
+        pagination.remove_item(1)
+        self.assertEqual(1, pagination.current_index())
+        self.assertEqual([1], page_events)
+        pagination.clear()
+        self.assertEqual(-1, pagination.current_index())
+        self.assertEqual([1, -1], page_events)
+
         grid = mywidgets.CardGrid()
         card = QWidget()
         grid.add_card(card)
         grid.add_card(card)
         self.assertEqual([card], grid._cards)
+        self.assertTrue(grid.remove_card(card))
+        self.assertIsNone(card.parent())
 
     def test_clickable_slider_only_jumps_for_left_button(self):
         slider = mywidgets.ClickableSlider()
@@ -404,6 +495,16 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(25, slider.value())
         QTest.mouseClick(slider, Qt.LeftButton, Qt.NoModifier, QPoint(150, 15))
         self.assertEqual(75, slider.value())
+
+        inverted = mywidgets.ClickableSlider()
+        inverted.setRange(0, 100)
+        inverted.setValue(50)
+        inverted.setInvertedAppearance(True)
+        inverted.resize(200, 30)
+        inverted.show()
+        self.app.processEvents()
+        QTest.mouseClick(inverted, Qt.LeftButton, Qt.NoModifier, QPoint(50, 15))
+        self.assertEqual(75, inverted.value())
 
     def test_state_tooltip_can_cancel_pending_close(self):
         tooltip = mywidgets.StateTooltip("Working")
@@ -446,6 +547,16 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(card.set_current("#333333"))
         self.assertEqual("#333333", card.current())
         self.assertFalse(card.set_current("#ffffff"))
+
+    def test_range_setting_card_uses_clamped_initial_value(self):
+        card = mywidgets.RangeSettingCard(
+            "Timeout",
+            minimum=5,
+            maximum=20,
+            value=99,
+        )
+        self.assertEqual(20, card.slider.value())
+        self.assertEqual("20", card.value_label.text())
 
     def test_image_view_clears_invalid_source(self):
         pixmap = QPixmap(24, 12)

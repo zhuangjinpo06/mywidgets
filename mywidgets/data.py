@@ -147,7 +147,8 @@ class SegmentedControl(QFrame):
             button.setChecked(True)
         return button
 
-    def remove_item(self, index: int):
+    def remove_item(self, index: int) -> QPushButton | None:
+        """Remove and return a button, transferring its ownership to the caller."""
         if not 0 <= index < len(self._buttons):
             return None
         previous_index = self.current_index()
@@ -156,7 +157,7 @@ class SegmentedControl(QFrame):
         was_current = button is current
         self._group.removeButton(button)
         self.layout.removeWidget(button)
-        button.deleteLater()
+        button.setParent(None)
         self._reindex()
         if not self._buttons:
             if previous_index >= 0:
@@ -174,7 +175,9 @@ class SegmentedControl(QFrame):
 
     def clear(self):
         while self._buttons:
-            self.remove_item(len(self._buttons) - 1)
+            button = self.remove_item(len(self._buttons) - 1)
+            if button is not None:
+                button.deleteLater()
 
     def set_current(self, index: int):
         if not 0 <= index < len(self._buttons):
@@ -348,7 +351,11 @@ class Pagination(QFrame):
         super().__init__(parent)
         self.setObjectName("Pagination")
         self._page_count = max(0, page_count)
-        self._current = max(0, min(current, max(0, self._page_count - 1)))
+        self._current = (
+            max(0, min(current, self._page_count - 1))
+            if self._page_count
+            else -1
+        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
@@ -364,7 +371,7 @@ class Pagination(QFrame):
         self._refresh()
 
     def _refresh(self):
-        shown = self._current + 1 if self._page_count else 0
+        shown = self._current + 1 if self._current >= 0 else 0
         self.label.setText(f"{shown} / {self._page_count}")
         self.previous_button.setEnabled(self._current > 0)
         self.next_button.setEnabled(self._current + 1 < self._page_count)
@@ -383,7 +390,12 @@ class Pagination(QFrame):
     def set_page_count(self, count: int):
         previous = self._current
         self._page_count = max(0, count)
-        self._current = min(self._current, max(0, self._page_count - 1))
+        if not self._page_count:
+            self._current = -1
+        elif self._current < 0:
+            self._current = 0
+        else:
+            self._current = min(self._current, self._page_count - 1)
         self._refresh()
         if self._current != previous:
             self.currentChanged.emit(self._current)
@@ -396,15 +408,16 @@ class Pagination(QFrame):
         if not 0 <= index < self._page_count:
             return False
         previous = self._current
+        removed_current = index == previous
         self._page_count -= 1
         if self._page_count == 0:
-            self._current = 0
+            self._current = -1
         elif index < self._current:
             self._current -= 1
         else:
             self._current = min(self._current, self._page_count - 1)
         self._refresh()
-        if self._current != previous:
+        if removed_current or self._current != previous:
             self.currentChanged.emit(self._current)
         return True
 
@@ -445,6 +458,7 @@ class CardGrid(QWidget):
             return False
         self._cards.remove(card)
         self.layout.removeWidget(card)
+        card.setParent(None)
         self._reflow()
         return True
 

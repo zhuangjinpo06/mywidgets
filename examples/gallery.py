@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from PySide6.QtCore import QStringListModel, QTimer
-from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtGui import QColor, QPixmap, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QApplication,
     QGridLayout,
@@ -32,15 +32,18 @@ from mywidgets import (
     Avatar,
     BodyText,
     BreadcrumbBar,
+    CaptionText,
     CalendarPicker,
     Card,
     CardGrid,
     CheckBox,
     CheckableMenu,
+    ClickableSlider,
     ClickableCard,
     ColorDialog,
     ColorSettingCard,
     ComboSelect,
+    ComboSettingCard,
     CommandBar,
     DataTable,
     DataTableView,
@@ -53,14 +56,19 @@ from mywidgets import (
     EditableComboSelect,
     ElevatedCard,
     EmptyState,
+    ExpandLayout,
     ExpandSettingCard,
     Flyout,
+    FlowLayout,
     FolderListDialog,
     FolderListSettingCard,
     HeaderCard,
     HyperlinkButton,
     HyperlinkSettingCard,
     HyperlinkText,
+    HorizontalSeparator,
+    IconButton,
+    ImageView,
     IndeterminateProgressLine,
     IndeterminateProgressRing,
     InfoBadge,
@@ -69,6 +77,7 @@ from mywidgets import (
     LoadingPanel,
     MessageBox,
     MetricCard,
+    ModernDialog,
     ModernList,
     ModernListView,
     ModernMenu,
@@ -78,9 +87,11 @@ from mywidgets import (
     ModernWindow,
     MonthPicker,
     NumberInput,
+    NavigationUserCard,
     OptionsSettingCard,
     Pagination,
     PasswordInput,
+    Panel,
     PillButton,
     PivotControl,
     PlainTextArea,
@@ -92,17 +103,21 @@ from mywidgets import (
     ProgressRing,
     PushSettingCard,
     RadioButton,
+    RangeSlider,
     RangeSettingCard,
     ScrollablePanel,
     SearchInput,
     SecondaryButton,
     SegmentedControl,
+    SettingCard,
     SettingGroup,
+    SideNavigation,
     SplashScreen,
     StateTooltip,
     StatusBadge,
     StrongText,
     SubtitleText,
+    SplitButton,
     SwitchSettingCard,
     TeachingTip,
     TextArea,
@@ -111,6 +126,7 @@ from mywidgets import (
     ThemeMode,
     TimePicker,
     TitleText,
+    ToolButton,
     ToastManager,
     ToggleButton,
     ToggleSwitch,
@@ -118,6 +134,9 @@ from mywidgets import (
     TopNavigation,
     TransparentButton,
     TransparentToolButton,
+    TooltipLabel,
+    VBoxLayout,
+    VerticalSeparator,
     apply_theme,
 )
 
@@ -170,6 +189,7 @@ class BasicsPage(GalleryPage):
         typography.add_widget(LargeTitleText("Large title / 大标题"))
         typography.add_widget(SubtitleText("Subtitle / 副标题"))
         typography.add_widget(BodyText("正文用于承载稳定、易扫描的信息内容。"))
+        typography.add_widget(CaptionText("Caption / 辅助说明文字"))
         typography.add_widget(HyperlinkText("Qt for Python 文档", "https://doc.qt.io/qtforpython-6/"))
 
         menu = ModernMenu("常用操作", self)
@@ -189,6 +209,9 @@ class BasicsPage(GalleryPage):
                     DropDownButton("下拉按钮", "menu", menu),
                     PrimaryDropDownButton("主要下拉", "add", menu),
                     PrimarySplitButton("发送请求", "send", menu),
+                    SplitButton("拆分按钮", "save", menu),
+                    IconButton("info", "图标按钮"),
+                    ToolButton("copy", "工具按钮"),
                     PrimaryToolButton("add", "新建"),
                     TransparentToolButton("edit", "编辑"),
                     ToggleToolButton("pin", "固定"),
@@ -233,6 +256,33 @@ class BasicsPage(GalleryPage):
         avatar_layout.addStretch(1)
         cards.add_card(avatar_card)
         self.root.addWidget(cards)
+
+        containers = self.add_section("容器、图像与分隔线", "Panel、ImageView 与横纵分隔线。", "image")
+        container_row = QHBoxLayout()
+        panel = Panel()
+        panel_layout = VBoxLayout(panel, spacing=8, margins=(16, 14, 16, 14))
+        panel_layout.addWidget(StrongText("Panel 容器"))
+        panel_layout.addWidget(HorizontalSeparator())
+        panel_layout.addWidget(BodyText("适合组织一组相关内容。"))
+        preview = QPixmap(180, 96)
+        preview.fill(QColor(DEFAULT_ACCENT))
+        image = ImageView(preview)
+        image.setFixedSize(180, 96)
+        container_row.addWidget(panel, 1)
+        container_row.addWidget(VerticalSeparator())
+        container_row.addWidget(image)
+        containers.body.addLayout(container_row)
+
+        layouts = self.add_section("布局助手", "FlowLayout、AdaptiveFlowLayout、ExpandLayout 与 VBoxLayout。", "menu")
+        raw_flow_host = QWidget()
+        raw_flow = FlowLayout(raw_flow_host, spacing=8)
+        for text in ("Flow A", "Flow B", "Flow C", "Flow D"):
+            raw_flow.addWidget(SecondaryButton(text))
+        layouts.add_widget(raw_flow_host)
+        expand_host = QWidget()
+        expand_layout = ExpandLayout(expand_host)
+        expand_layout.addWidget(CaptionText("ExpandLayout 会将内容保持在容器顶部。"))
+        layouts.add_widget(expand_host)
         self.finish()
 
 
@@ -271,6 +321,18 @@ class InputsPage(GalleryPage):
                 minimum_item_width=150,
             )
         )
+
+        sliders = self.add_section("范围与定位", "普通滑块与点击定位滑块。", "filter")
+        range_slider = RangeSlider()
+        range_slider.setRange(0, 100)
+        range_slider.setValue(35)
+        clickable_slider = ClickableSlider()
+        clickable_slider.setRange(0, 100)
+        clickable_slider.setValue(70)
+        for slider in (range_slider, clickable_slider):
+            slider.setMinimumWidth(260)
+        sliders.add_widget(range_slider)
+        sliders.add_widget(clickable_slider)
         self.finish()
 
 
@@ -364,6 +426,21 @@ class NavigationPage(GalleryPage):
         tabs.addTab(LoadingPanel("正在读取响应"), "响应")
         tabs.setMinimumHeight(230)
         self.root.addWidget(tabs)
+
+        side_section = self.add_section("侧边导航部件", "SideNavigation 同时展示标题、分隔线、导航项与用户卡片。", "home")
+        side_preview = Panel()
+        side_preview.setMinimumHeight(300)
+        side_layout = QHBoxLayout(side_preview)
+        side_layout.setContentsMargins(0, 0, 16, 0)
+        side_navigation = SideNavigation("PREVIEW", side_preview)
+        side_navigation.add_header("工作区")
+        side_navigation.add_item(0, "概览", "home")
+        side_navigation.add_item(1, "任务", "api")
+        side_navigation.add_separator("bottom")
+        side_navigation.bottom_layout.addWidget(NavigationUserCard("MyWidgets", "本地用户"))
+        side_layout.addWidget(side_navigation)
+        side_layout.addWidget(EmptyState("导航内容区", "点击左侧条目可体验选中状态。"), 1)
+        side_section.add_widget(side_preview)
         self.finish()
 
 
@@ -383,6 +460,7 @@ class FeedbackPage(GalleryPage):
         bar.add_action("Toast", "info", lambda: ToastManager.info(self.window(), "普通提示", "这是一条本地通知。"))
         bar.add_action("成功", "success", lambda: ToastManager.success(self.window(), "请求完成", "响应耗时 128 ms"))
         bar.add_action("Dialog", "info", self.show_dialog, primary=True)
+        bar.add_action("自定义对话框", "edit", self.show_modern_dialog)
         flyout_button = bar.add_action("Flyout", "menu")
         flyout_button.clicked.connect(lambda: Flyout.show_at(flyout_button, "更多操作", "弹层会自动避开屏幕边缘。"))
         tip_button = bar.add_action("TeachingTip", "warning")
@@ -396,6 +474,9 @@ class FeedbackPage(GalleryPage):
         bar.add_action("文件夹", "folder", self.show_folder_dialog)
         bar.add_action("启动屏", "rocket", self.show_splash)
         self.root.addWidget(bar)
+        tooltip = TooltipLabel("TooltipLabel 可用于表单旁的简短上下文说明。")
+        tooltip.setToolTip("原生 Tooltip 与提示标签可以组合使用")
+        self.root.addWidget(tooltip)
         self.root.addWidget(EmptyState("暂无更多消息", "所有弹层都可以在亮色与暗色主题下使用。"))
         self.finish()
 
@@ -404,6 +485,15 @@ class FeedbackPage(GalleryPage):
 
     def show_dialog(self):
         MessageBox("确认操作", "这是一个使用 mywidgets 实现的现代对话框。", self.window()).exec()
+
+    def show_modern_dialog(self):
+        dialog = ModernDialog("编辑连接", "ModernDialog 可添加任意正文控件与操作按钮。", self.window())
+        dialog.add_widget(TextInput("https://api.example.com"))
+        cancel = dialog.add_button("取消")
+        save = dialog.add_button("保存", "primary")
+        cancel.clicked.connect(dialog.reject)
+        save.clicked.connect(dialog.accept)
+        dialog.exec()
 
     def show_color_dialog(self):
         ColorDialog(parent=self.window()).open()
@@ -443,6 +533,7 @@ class SettingsPage(GalleryPage):
         color_card.colorChanged.connect(self.set_accent)
         appearance.add_card(color_card)
         appearance.add_card(RangeSettingCard("默认超时", "单位：秒", "time", 5, 120, 30))
+        appearance.add_card(ComboSettingCard("默认环境", ["开发", "测试", "生产"], "单项下拉选择", "api"))
         appearance.add_card(OptionsSettingCard("界面密度", ["紧凑", "标准", "宽松"], "选择控件间距", "menu", "标准"))
         appearance.add_card(PushSettingCard("重置外观", "重置", "恢复默认主题", "refresh"))
         appearance.add_card(
@@ -457,6 +548,7 @@ class SettingsPage(GalleryPage):
         self.root.addWidget(appearance)
 
         advanced = SettingGroup("高级")
+        advanced.add_card(SettingCard("只读设置项", "SettingCard 可承载自定义操作控件。", "info"))
         expand = ExpandSettingCard("请求策略", "展开查看说明", "api", True)
         expand.add_widget(BodyText("失败请求最多重试两次，并使用指数退避。"))
         advanced.add_card(expand)

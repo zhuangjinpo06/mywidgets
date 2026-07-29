@@ -126,15 +126,15 @@ class RangeSettingCard(SettingCard):
         parent=None,
     ):
         super().__init__(title, content, icon, parent)
-        self.value_label = CaptionText(str(value))
-        self.value_label.setMinimumWidth(28)
-        self.value_label.setAlignment(Qt.AlignCenter)
         self.slider = RangeSlider(Qt.Horizontal)
         self.slider.setRange(minimum, maximum)
         self.slider.setValue(value)
         self.slider.setMinimumWidth(110)
         self.slider.setMaximumWidth(240)
         self.slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.value_label = CaptionText(str(self.slider.value()))
+        self.value_label.setMinimumWidth(28)
+        self.value_label.setAlignment(Qt.AlignCenter)
         self.slider.valueChanged.connect(self._on_value_changed)
         self.add_action_widget(self.slider)
         self.add_action_widget(self.value_label)
