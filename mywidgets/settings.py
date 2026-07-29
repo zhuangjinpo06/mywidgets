@@ -37,6 +37,8 @@ class SettingGroup(QFrame):
         self._cards: list[QWidget] = []
 
     def add_card(self, card: QWidget):
+        if card in self._cards:
+            return card
         self._cards.append(card)
         self.layout.addWidget(card)
         return card
@@ -257,7 +259,8 @@ class OptionsSettingCard(SettingCard):
             self.buttons.append(button)
             self.add_action_widget(button)
         if self.buttons:
-            self.set_current(current or self.options[0])
+            selected = current if current in self.options else self.options[0]
+            self.set_current(selected)
 
     def set_current(self, value: str):
         if value not in self.options:

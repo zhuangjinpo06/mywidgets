@@ -72,6 +72,7 @@ class SideNavigation(QWidget):
         self.setFixedWidth(self._expanded_width)
         self._items: list[NavItem] = []
         self._extras: list[QWidget] = []
+        self._current_index = -1
 
         self.root = QVBoxLayout(self)
         self.root.setContentsMargins(18, 18, 18, 18)
@@ -107,14 +108,19 @@ class SideNavigation(QWidget):
             )
         item = NavItem(expected_index, title, icon, self)
         item.set_compact(self._compact)
-        item.selected.connect(self.set_current)
-        item.selected.connect(self.currentChanged)
+        item.selected.connect(self._on_item_selected)
         self._items.append(item)
         self._target_layout(position).addWidget(item)
         if len(self._items) == 1:
             item.setChecked(True)
             item._refresh_icon()
+            self._current_index = 0
         return item
+
+    def _on_item_selected(self, index: int):
+        changed = self._current_index != index
+        if self.set_current(index) and changed:
+            self.currentChanged.emit(index)
 
     def add_header(self, text: str, position: NavigationPosition | str = NavigationPosition.TOP):
         header = NavigationHeader(text, self)
@@ -133,14 +139,19 @@ class SideNavigation(QWidget):
         """Remove and return an item, transferring its ownership to the caller."""
         if not 0 <= index < len(self._items):
             return None
-        current = next((candidate for candidate in self._items if candidate.isChecked()), None)
-        previous_index = current.index if current is not None else -1
+        previous_index = self._current_index
+        current = (
+            self._items[previous_index]
+            if 0 <= previous_index < len(self._items)
+            else next((candidate for candidate in self._items if candidate.isChecked()), None)
+        )
         item = self._items.pop(index)
         was_current = item is current
         item.setParent(None)
         for new_index, candidate in enumerate(self._items):
             candidate.index = new_index
         if not self._items:
+            self._current_index = -1
             if was_current:
                 self.currentChanged.emit(-1)
             return item
@@ -160,6 +171,7 @@ class SideNavigation(QWidget):
             item.setParent(None)
             item.deleteLater()
         self._items.clear()
+        self._current_index = -1
         for extra in self._extras:
             extra.setParent(None)
             extra.deleteLater()
@@ -174,6 +186,8 @@ class SideNavigation(QWidget):
             item.setChecked(selected)
             item._refresh_icon()
             found = found or selected
+        if found:
+            self._current_index = index
         return found
 
     def set_compact(self, compact: bool):
@@ -208,27 +222,37 @@ class TopNavigation(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._items: list[NavItem] = []
+        self._current_index = -1
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(6)
 
     def add_item(self, title: str, icon: str) -> NavItem:
         item = NavItem(len(self._items), title, icon, self)
-        item.selected.connect(self.set_current)
-        item.selected.connect(self.currentChanged)
+        item.selected.connect(self._on_item_selected)
         self._items.append(item)
         self.layout.addWidget(item)
         if len(self._items) == 1:
             item.setChecked(True)
             item._refresh_icon()
+            self._current_index = 0
         return item
+
+    def _on_item_selected(self, index: int):
+        changed = self._current_index != index
+        if self.set_current(index) and changed:
+            self.currentChanged.emit(index)
 
     def remove_item(self, index: int) -> NavItem | None:
         """Remove and return an item, transferring its ownership to the caller."""
         if not 0 <= index < len(self._items):
             return None
-        current = next((item for item in self._items if item.isChecked()), None)
-        previous_index = current.index if current is not None else -1
+        previous_index = self._current_index
+        current = (
+            self._items[previous_index]
+            if 0 <= previous_index < len(self._items)
+            else next((item for item in self._items if item.isChecked()), None)
+        )
         item = self._items.pop(index)
         was_current = item is current
         self.layout.removeWidget(item)
@@ -236,6 +260,7 @@ class TopNavigation(QWidget):
         for new_index, candidate in enumerate(self._items):
             candidate.index = new_index
         if not self._items:
+            self._current_index = -1
             if was_current:
                 self.currentChanged.emit(-1)
             return item
@@ -263,6 +288,7 @@ class TopNavigation(QWidget):
         for item in self._items:
             item.setChecked(item.index == index)
             item._refresh_icon()
+        self._current_index = index
         return True
 
 
@@ -302,13 +328,32 @@ class ModernWindow(QMainWindow):
         position: NavigationPosition | str = NavigationPosition.TOP,
         route_key: str | None = None,
     ) -> int:
-        index = self.stack.count()
-        route = route_key or widget.objectName() or f"page_{index}"
+        expected_index = self.stack.count()
+        if self.stack.indexOf(widget) >= 0:
+            raise ValueError("Page widget is already added to this window")
+        existing_stack = widget.parentWidget()
+        if (
+            isinstance(existing_stack, QStackedWidget)
+            and existing_stack is not self.stack
+            and existing_stack.indexOf(widget) >= 0
+        ):
+            raise ValueError("Page widget is already added to another stacked widget")
+        route = route_key or widget.objectName() or f"page_{expected_index}"
         if route in self._routes:
             raise ValueError(f"Duplicate route key: {route}")
+        original_parent = widget.parentWidget()
         index = self.stack.addWidget(widget)
+        try:
+            if index != expected_index:
+                raise RuntimeError(
+                    f"Unexpected page index: expected {expected_index}, got {index}"
+                )
+            self.navigation.add_item(index, title, icon, position)
+        except Exception:
+            self.stack.removeWidget(widget)
+            widget.setParent(original_parent)
+            raise
         self._routes.append(route)
-        self.navigation.add_item(index, title, icon, position)
         if index == 0:
             self.stack.setCurrentIndex(0)
         return index

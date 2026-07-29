@@ -80,9 +80,22 @@ class ClickableCard(Card):
         self.setObjectName("ClickableCard")
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.StrongFocus)
+        self._pressed_inside = False
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._pressed_inside = self.rect().contains(event.position().toPoint())
+        super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+        should_click = (
+            event.button() == Qt.LeftButton
+            and self._pressed_inside
+            and self.rect().contains(event.position().toPoint())
+        )
+        if event.button() == Qt.LeftButton:
+            self._pressed_inside = False
+        if should_click:
             self.clicked.emit()
         super().mouseReleaseEvent(event)
 

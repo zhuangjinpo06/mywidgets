@@ -12,10 +12,21 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QDate, QEvent, QPoint, QRect, QTime, Qt
+from PySide6.QtCore import (
+    QCoreApplication,
+    QDate,
+    QDateTime,
+    QEvent,
+    QPoint,
+    QRect,
+    QTime,
+    QTimeZone,
+    Qt,
+)
 from PySide6.QtGui import QAction, QColor, QIcon, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QFileDialog, QPushButton, QWidget
+from PySide6.QtWidgets import QVBoxLayout
 
 import mywidgets
 from examples.gallery import FeedbackPage, GalleryWindow
@@ -57,7 +68,7 @@ class PackageTests(unittest.TestCase):
         self.assertGreaterEqual(len(modules), 18)
 
     def test_public_exports_and_version(self):
-        self.assertEqual("0.1.1", mywidgets.__version__)
+        self.assertEqual("0.1.2", mywidgets.__version__)
         self.assertEqual(len(mywidgets.__all__), len(set(mywidgets.__all__)))
         self.assertGreaterEqual(len(mywidgets.__all__), 120)
         for name in (
@@ -105,6 +116,11 @@ class PackageTests(unittest.TestCase):
 
     def test_transient_dialogs_and_splash_are_deleted(self):
         parent = QWidget()
+        directory_dialog = create_existing_directory_dialog(parent)
+        self.assertFalse(
+            directory_dialog.testOption(QFileDialog.Option.DontUseNativeDialog)
+        )
+        directory_dialog.deleteLater()
         with patch.object(
             QFileDialog,
             "exec",
@@ -248,6 +264,41 @@ class PackageTests(unittest.TestCase):
         )
         self.assertLess(abs(now.secsTo(mywidgets.TimePicker().time())), 3)
 
+    def test_month_picker_normalizes_values_and_bounds_to_month_start(self):
+        picker = mywidgets.MonthPicker()
+        picker.setMinimumDate(QDate(2026, 7, 15))
+        picker.setMaximumDate(QDate(2026, 9, 20))
+        self.assertEqual(QDate(2026, 7, 1), picker.minimumDate())
+        self.assertEqual(QDate(2026, 9, 1), picker.maximumDate())
+
+        picker.setDate(QDate(2026, 8, 24))
+        self.assertEqual(QDate(2026, 8, 1), picker.date())
+        date_time = QDateTime.currentDateTime()
+        date_time.setDate(QDate(2026, 9, 18))
+        date_time.setTime(QTime(10, 30))
+        picker.setDateTime(date_time)
+        self.assertEqual(QDate(2026, 9, 1), picker.date())
+
+        east_eight = QTimeZone.fromSecondsAheadOfUtc(8 * 60 * 60)
+        early_local_time = QDateTime(
+            QDate(2026, 9, 18),
+            QTime(0, 30),
+            east_eight,
+        )
+        picker.setDateTime(early_local_time)
+        self.assertEqual(QDate(2026, 9, 1), picker.date())
+
+        picker.setDateTimeRange(
+            QDateTime(QDate(2026, 7, 15), QTime(23, 0), east_eight),
+            QDateTime(QDate(2026, 7, 20), QTime(1, 0), east_eight),
+        )
+        self.assertEqual(QDate(2026, 7, 1), picker.minimumDate())
+        self.assertEqual(QDate(2026, 7, 1), picker.maximumDate())
+
+        picker.setDateRange(QDate(2027, 2, 18), QDate(2027, 4, 29))
+        self.assertEqual(QDate(2027, 2, 1), picker.minimumDate())
+        self.assertEqual(QDate(2027, 4, 1), picker.maximumDate())
+
     def test_navigation_and_gallery_smoke(self):
         window = GalleryWindow()
         window.resize(980, 640)
@@ -263,6 +314,67 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(window.set_current("basics"))
         self.assertFalse(window.set_current("missing"))
         window.close()
+
+    def test_modern_window_rejects_duplicate_page_without_mutating_routes(self):
+        window = mywidgets.ModernWindow()
+        page = QWidget()
+        self.assertEqual(0, window.add_page(page, "A", "home", route_key="a"))
+
+        with self.assertRaisesRegex(ValueError, "already added"):
+            window.add_page(page, "B", "home", route_key="b")
+
+        self.assertEqual(1, window.stack.count())
+        self.assertEqual(["a"], window._routes)
+        self.assertEqual(1, len(window.navigation._items))
+        self.assertEqual(
+            1,
+            window.add_page(QWidget(), "B", "home", route_key="b"),
+        )
+        self.assertEqual("b", window.route_key(1))
+        window.close()
+
+    def test_modern_window_rejects_page_owned_by_another_window(self):
+        first = mywidgets.ModernWindow()
+        second = mywidgets.ModernWindow()
+        page = QWidget()
+        first.add_page(page, "A", "home", route_key="a")
+
+        with self.assertRaisesRegex(ValueError, "another stacked widget"):
+            second.add_page(page, "B", "home", route_key="b")
+
+        self.assertEqual(1, first.stack.count())
+        self.assertEqual(["a"], first._routes)
+        self.assertEqual(1, len(first.navigation._items))
+        self.assertTrue(first.set_current("a"))
+        self.assertEqual(0, second.stack.count())
+        self.assertEqual([], second._routes)
+        self.assertEqual(0, len(second.navigation._items))
+        first.close()
+        second.close()
+
+    def test_navigation_only_emits_when_user_selection_changes(self):
+        widgets = []
+        for navigation in (mywidgets.TopNavigation(), mywidgets.SideNavigation()):
+            if isinstance(navigation, mywidgets.SideNavigation):
+                navigation.add_item(0, "A", "home")
+                navigation.add_item(1, "B", "home")
+            else:
+                navigation.add_item("A", "home")
+                navigation.add_item("B", "home")
+            navigation.show()
+            self.app.processEvents()
+            events = []
+            navigation.currentChanged.connect(events.append)
+
+            QTest.mouseClick(navigation._items[0], Qt.LeftButton)
+            QTest.mouseClick(navigation._items[1], Qt.LeftButton)
+            QTest.mouseClick(navigation._items[1], Qt.LeftButton)
+
+            self.assertEqual([1], events, type(navigation).__name__)
+            self.assertEqual([False, True], [item.isChecked() for item in navigation._items])
+            widgets.append(navigation)
+        for widget in widgets:
+            widget.close()
 
     def test_side_navigation_uses_narrow_expanded_width(self):
         side = mywidgets.SideNavigation()
@@ -506,6 +618,20 @@ class PackageTests(unittest.TestCase):
         QTest.mouseClick(inverted, Qt.LeftButton, Qt.NoModifier, QPoint(50, 15))
         self.assertEqual(75, inverted.value())
 
+    def test_clickable_card_requires_a_matching_mouse_press(self):
+        card = mywidgets.ClickableCard()
+        card.resize(120, 70)
+        card.show()
+        self.app.processEvents()
+        clicks = []
+        card.clicked.connect(lambda: clicks.append("clicked"))
+
+        QTest.mouseRelease(card, Qt.LeftButton, Qt.NoModifier, QPoint(40, 30))
+        self.assertEqual([], clicks)
+        QTest.mouseClick(card, Qt.LeftButton, Qt.NoModifier, QPoint(40, 30))
+        self.assertEqual(["clicked"], clicks)
+        card.close()
+
     def test_state_tooltip_can_cancel_pending_close(self):
         tooltip = mywidgets.StateTooltip("Working")
         tooltip.show()
@@ -537,6 +663,29 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(bar._overflow_menu.isEmpty())
         bar.close()
 
+    def test_command_bar_overflow_does_not_expand_its_host(self):
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        bar = mywidgets.CommandBar()
+        layout.addWidget(bar)
+        buttons = [bar.add_action(f"Action {index}", "info") for index in range(6)]
+        host.resize(180, 100)
+        host.show()
+        self.app.processEvents()
+        bar._update_overflow()
+        self.app.processEvents()
+
+        self.assertEqual(180, host.width())
+        visibility = [button.isVisible() for button in buttons]
+        self.assertIn(False, visibility)
+        first_hidden = visibility.index(False)
+        self.assertFalse(any(visibility[first_hidden:]))
+        self.assertEqual(
+            [button.text() for button in buttons[first_hidden:]],
+            [action.text() for action in bar._overflow_menu.actions()],
+        )
+        host.close()
+
     def test_color_setting_card_tracks_current_color(self):
         card = mywidgets.ColorSettingCard(
             "Accent",
@@ -547,6 +696,46 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(card.set_current("#333333"))
         self.assertEqual("#333333", card.current())
         self.assertFalse(card.set_current("#ffffff"))
+
+    def test_option_setting_selection_falls_back_consistently(self):
+        options = mywidgets.OptionsSettingCard(
+            "Density",
+            ["compact", "normal"],
+            current="missing",
+        )
+        self.assertEqual("compact", options.current())
+
+    def test_setting_group_ignores_duplicate_cards(self):
+        group = mywidgets.SettingGroup("General")
+        card = mywidgets.SettingCard("Card")
+        self.assertIs(card, group.add_card(card))
+        self.assertIs(card, group.add_card(card))
+        self.assertEqual([card], group._cards)
+        self.assertEqual(2, group.layout.count())
+        self.assertTrue(group.remove_card(card))
+        self.assertIsNone(card.parent())
+
+    def test_control_arrow_overlays_follow_layout_direction(self):
+        controls = [
+            mywidgets.ComboSelect(["A"]),
+            mywidgets.NumberInput(),
+        ]
+        for control in controls:
+            control.resize(160, 40)
+            control.setLayoutDirection(Qt.RightToLeft)
+            control.show()
+            self.app.processEvents()
+            labels = control._fluent_arrow_overlay.labels
+            self.assertTrue(
+                all(label.geometry().center().x() < control.width() // 2 for label in labels)
+            )
+
+            control.setLayoutDirection(Qt.LeftToRight)
+            self.app.processEvents()
+            self.assertTrue(
+                all(label.geometry().center().x() > control.width() // 2 for label in labels)
+            )
+            control.close()
 
     def test_range_setting_card_uses_clamped_initial_value(self):
         card = mywidgets.RangeSettingCard(

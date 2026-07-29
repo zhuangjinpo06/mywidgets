@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableView,
     QTableWidget,
     QTabWidget,
@@ -284,10 +285,12 @@ class CommandBar(QFrame):
 
     def add_action(self, text: str, icon=None, callback=None, primary: bool = False):
         button = PrimaryButton(text, icon) if primary else SecondaryButton(text, icon)
+        button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         if callback:
             button.clicked.connect(callback)
         self._items.append(_CommandItem(button, text, icon, callback))
         self.layout.insertWidget(max(0, self.layout.count() - 1), button)
+        self.layout.setAlignment(button, Qt.AlignLeft)
         self._overflow_timer.start(0)
         return button
 
@@ -304,7 +307,8 @@ class CommandBar(QFrame):
             return
 
         spacing = max(0, self.layout.spacing())
-        total = sum(item.button.sizeHint().width() + spacing for item in self._items)
+        widths = [item.button.sizeHint().width() for item in self._items]
+        total = sum(widths) + spacing * max(0, len(widths) - 1)
         if total <= self.width():
             for item in self._items:
                 item.button.show()
@@ -315,13 +319,15 @@ class CommandBar(QFrame):
         available = max(0, self.width() - self._more_button.sizeHint().width() - spacing)
         used = 0
         hidden = []
-        for item in self._items:
-            required = item.button.sizeHint().width() + spacing
-            visible = used + required <= available
+        overflow_started = False
+        for item, width in zip(self._items, widths):
+            required = width + (spacing if used else 0)
+            visible = not overflow_started and used + required <= available
             item.button.setVisible(visible)
             if visible:
                 used += required
             else:
+                overflow_started = True
                 hidden.append(item)
         self._overflow_menu.clear()
         for item in hidden:

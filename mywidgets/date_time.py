@@ -119,14 +119,64 @@ class MonthPicker(_DateTimeThemeSupport, QDateEdit):
         self.setObjectName("MonthPicker")
         self.setDisplayFormat("yyyy-MM")
         self.setCalendarPopup(False)
+        QDateEdit.setDateRange(
+            self,
+            self._month_start(self.minimumDate()),
+            self._month_start(self.maximumDate()),
+        )
         current = QDate.currentDate()
         self.setDate(QDate(current.year(), current.month(), 1))
         self._init_date_time_theme(False)
 
+    @staticmethod
+    def _month_start(date: QDate):
+        return QDate(date.year(), date.month(), 1) if date.isValid() else date
+
     def setDate(self, date: QDate):
-        if date.isValid():
-            date = QDate(date.year(), date.month(), 1)
-        QDateEdit.setDate(self, date)
+        QDateEdit.setDate(self, self._month_start(date))
+
+    def setDateTime(self, date_time: QDateTime):
+        self.setDate(date_time.date())
+
+    def setMinimumDate(self, minimum: QDate):
+        QDateEdit.setMinimumDate(self, self._month_start(minimum))
+
+    def setMaximumDate(self, maximum: QDate):
+        QDateEdit.setMaximumDate(self, self._month_start(maximum))
+
+    def setDateRange(self, minimum: QDate, maximum: QDate):
+        QDateEdit.setDateRange(
+            self,
+            self._month_start(minimum),
+            self._month_start(maximum),
+        )
+
+    def setMinimumDateTime(self, minimum: QDateTime):
+        self.setMinimumDate(minimum.date())
+
+    def setMaximumDateTime(self, maximum: QDateTime):
+        self.setMaximumDate(maximum.date())
+
+    def setDateTimeRange(self, minimum: QDateTime, maximum: QDateTime):
+        self.setDateRange(minimum.date(), maximum.date())
+
+    def clearMinimumDate(self):
+        QDateEdit.clearMinimumDate(self)
+        current = self.date()
+        QDateEdit.setMinimumDate(self, self._month_start(self.minimumDate()))
+        self.setDate(current)
+
+    def clearMaximumDate(self):
+        QDateEdit.clearMaximumDate(self)
+        current = self.date()
+        QDateEdit.setMaximumDate(self, self._month_start(self.maximumDate()))
+        self.setDate(current)
+
+    def clearMinimumDateTime(self):
+        self.clearMinimumDate()
+
+    def clearMaximumDateTime(self):
+        self.clearMaximumDate()
 
 
 class AmPmTimePicker(_DateTimeThemeSupport, QTimeEdit):

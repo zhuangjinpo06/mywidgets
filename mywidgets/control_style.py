@@ -167,7 +167,7 @@ class ControlArrowOverlay(QObject):
         self._position()
 
     def eventFilter(self, watched, event):
-        if event.type() in (QEvent.Resize, QEvent.Show):
+        if event.type() in (QEvent.Resize, QEvent.Show, QEvent.LayoutDirectionChange):
             self._position()
         elif event.type() == QEvent.EnabledChange:
             self._refresh_icons()
@@ -186,12 +186,15 @@ class ControlArrowOverlay(QObject):
         height = self.widget.height()
         if not self.labels or width <= 0 or height <= 0:
             return
+        right_to_left = self.widget.layoutDirection() == Qt.RightToLeft
         if self.mode == "dropdown":
-            self.labels[0].setGeometry(max(0, width - 28), 0, 24, height)
+            x = 4 if right_to_left else max(0, width - 28)
+            self.labels[0].setGeometry(x, 0, 24, height)
         else:
             half = max(1, height // 2)
-            self.labels[0].setGeometry(max(0, width - 24), 1, 20, max(1, half - 1))
-            self.labels[1].setGeometry(max(0, width - 24), half, 20, max(1, height - half - 1))
+            x = 4 if right_to_left else max(0, width - 24)
+            self.labels[0].setGeometry(x, 1, 20, max(1, half - 1))
+            self.labels[1].setGeometry(x, half, 20, max(1, height - half - 1))
         for label in self.labels:
             label.raise_()
 

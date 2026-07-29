@@ -103,7 +103,6 @@ def create_existing_directory_dialog(parent: QWidget | None = None, title: str =
     install_window_icon(dialog, "folder")
     dialog.setFileMode(QFileDialog.FileMode.Directory)
     dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
-    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
     return dialog
 
 
